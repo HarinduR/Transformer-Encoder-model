@@ -44,10 +44,14 @@ class PositionalEncoding(nn.Module):
             return x + self.emb(pos_indices)
 
 class TransformerLayer(nn.Module):
-    def __init__(self, d_model: int, d_internal: int):
+    def __init__(self, d_model: int, d_internal: int, num_heads: int = 4):
         super().__init__()
         self.d_model = d_model
         self.d_internal = d_internal
+        self.num_heads = num_heads
+
+        assert d_internal % num_heads == 0, "d_internal must be divisible by num_heads"
+        self.head_dim = d_internal // num_heads
 
         self.W_q = nn.Linear(d_model, d_internal, bias=False)
         self.W_k = nn.Linear(d_model, d_internal, bias=False)
@@ -60,26 +64,33 @@ class TransformerLayer(nn.Module):
         self.activation = nn.ReLU()
 
     def forward(self, input_vecs: torch.Tensor):
+        seq_len = input_vecs.size(0)
+
         Q = self.W_q(input_vecs)
         K = self.W_k(input_vecs)
         V = self.W_v(input_vecs)
 
-        scale = math.sqrt(self.d_internal)
-        scores = Q @ K.transpose(0, 1) / scale
+        Q = Q.view(seq_len, self.num_heads, self.head_dim).transpose(0, 1)
+        K = K.view(seq_len, self.num_heads, self.head_dim).transpose(0, 1)
+        V = V.view(seq_len, self.num_heads, self.head_dim).transpose(0, 1)
 
+        scores = torch.matmul(Q, K.transpose(1, 2)) / math.sqrt(self.head_dim)
         attn_weights = torch.softmax(scores, dim=-1)
 
-        attn_output = attn_weights @ V
+        attn_output = torch.matmul(attn_weights, V)
+
+        attn_output = attn_output.transpose(0, 1).contiguous().view(seq_len, self.d_internal)
 
         attn_proj = self.W_o(attn_output)
         residual_1 = input_vecs + attn_proj
 
         ff_hidden = self.activation(self.ff1(residual_1))
         ff_output = self.ff2(ff_hidden)
-
         output_vecs = residual_1 + ff_output
 
-        return output_vecs, attn_weights
+        attn_map = attn_weights.mean(dim=0)
+
+        return output_vecs, attn_map
 
 
 class Transformer(nn.Module):
@@ -91,6 +102,7 @@ class Transformer(nn.Module):
         d_internal: int,
         num_classes: int,
         num_layers: int,
+        num_heads: int = 4,
     ):
         super().__init__()
         self.vocab_size = vocab_size
@@ -99,13 +111,14 @@ class Transformer(nn.Module):
         self.d_internal = d_internal
         self.num_classes = num_classes
         self.num_layers = num_layers
+        self.num_heads = num_heads
 
         self.char_emb = nn.Embedding(vocab_size, d_model)
 
         self.pos_enc = PositionalEncoding(d_model, num_positions=num_positions, batched=False)
 
         self.layers = nn.ModuleList(
-            [TransformerLayer(d_model, d_internal) for _ in range(num_layers)]
+            [TransformerLayer(d_model, d_internal, num_heads=self.num_heads) for _ in range(num_layers)]
         )
 
         self.out = nn.Linear(d_model, num_classes)
@@ -145,6 +158,7 @@ def train_classifier(args, train: List[LetterCountingExample], dev: List[LetterC
     d_internal = 64
     num_classes = 3
     num_layers = 1
+    num_heads = 1
 
     model = Transformer(
         vocab_size=vocab_size,
@@ -153,6 +167,7 @@ def train_classifier(args, train: List[LetterCountingExample], dev: List[LetterC
         d_internal=d_internal,
         num_classes=num_classes,
         num_layers=num_layers,
+        num_heads=num_heads,
     )
 
     loss_fcn = nn.NLLLoss()
