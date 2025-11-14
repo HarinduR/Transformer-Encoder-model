@@ -207,51 +207,40 @@ def train_classifier(args, train: List[LetterCountingExample], dev: List[LetterC
 # DO NOT MODIFY IN YOUR SUBMISSION #
 ####################################
 
-def decode(model: Transformer,
-           dev_examples: List[LetterCountingExample],
-           do_print: bool = False,
-           do_plot_attn: bool = False):
-
+def decode(model: Transformer, dev_examples: List[LetterCountingExample], do_print=False, do_plot_attn=False):
+    """
+    Decodes the given dataset, does plotting and printing of examples, and prints the final accuracy.
+    :param model: your Transformer that returns log probabilities at each position in the input
+    :param dev_examples: the list of LetterCountingExample
+    :param do_print: True if you want to print the input/gold/predictions for the examples, false otherwise
+    :param do_plot_attn: True if you want to write out plots for each example, false otherwise
+    :return:
+    """
     num_correct = 0
     num_total = 0
-
     if len(dev_examples) > 100:
-        print(f"Decoding on a large number of examples ({len(dev_examples)}); "
-              f"not printing or plotting")
+        print("Decoding on a large number of examples (%i); not printing or plotting" % len(dev_examples))
         do_print = False
         do_plot_attn = False
-
-    for i, ex in enumerate(dev_examples):
-        log_probs, attn_maps = model.forward(ex.input_tensor)
-        predictions = np.argmax(log_probs.detach().cpu().numpy(), axis=1)
-
+    for i in range(0, len(dev_examples)):
+        ex = dev_examples[i]
+        (log_probs, attn_maps) = model.forward(ex.input_tensor)
+        predictions = np.argmax(log_probs.detach().numpy(), axis=1)
         if do_print:
-            print(f"INPUT {i}: {ex.input}")
-            print(f"GOLD  {i}: {repr(ex.output.astype(int))}")
-            print(f"PRED  {i}: {repr(predictions)}")
-
+            print("INPUT %i: %s" % (i, ex.input))
+            print("GOLD %i: %s" % (i, repr(ex.output.astype(dtype=int))))
+            print("PRED %i: %s" % (i, repr(predictions)))
         if do_plot_attn:
-            for j, attn_map in enumerate(attn_maps):
+            for j in range(0, len(attn_maps)):
+                attn_map = attn_maps[j]
                 fig, ax = plt.subplots()
-                attn_np = attn_map.detach().cpu().numpy()
-                im = ax.imshow(attn_np, cmap="hot", interpolation="nearest")
-
-                ax.set_xticks(np.arange(len(ex.input)))
-                ax.set_yticks(np.arange(len(ex.input)))
-                ax.set_xticklabels(list(ex.input))
-                ax.set_yticklabels(list(ex.input))
+                im = ax.imshow(attn_map.detach().numpy(), cmap='hot', interpolation='nearest')
+                ax.set_xticks(np.arange(len(ex.input)), labels=ex.input)
+                ax.set_yticks(np.arange(len(ex.input)), labels=ex.input)
                 ax.xaxis.tick_top()
-
-                plt.tight_layout()
-                plt.savefig(f"plots/{i}_attns{j}.png")
-                plt.close(fig)
-
-        acc = sum(
-            int(predictions[t] == ex.output[t])
-            for t in range(len(predictions))
-        )
+                # plt.show()
+                plt.savefig("plots/%i_attns%i.png" % (i, j))
+        acc = sum([predictions[i] == ex.output[i] for i in range(0, len(predictions))])
         num_correct += acc
         num_total += len(predictions)
-
-    accuracy = float(num_correct) / float(num_total) if num_total > 0 else 0.0
-    print(f"Accuracy: {num_correct} / {num_total} = {accuracy:.6f}")
+    print("Accuracy: %i / %i = %f" % (num_correct, num_total, float(num_correct) / num_total))
