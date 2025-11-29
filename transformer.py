@@ -44,7 +44,7 @@ class PositionalEncoding(nn.Module):
             return x + self.emb(pos_indices)
 
 class TransformerLayer(nn.Module):
-    def __init__(self, d_model: int, d_internal: int, num_heads: int = 4):
+    def __init__(self, d_model: int, d_internal: int, num_heads: int = 1):
         super().__init__()
         self.d_model = d_model
         self.d_internal = d_internal
@@ -102,7 +102,7 @@ class Transformer(nn.Module):
         d_internal: int,
         num_classes: int,
         num_layers: int,
-        num_heads: int = 4,
+        num_heads: int = 1,
     ):
         super().__init__()
         self.vocab_size = vocab_size
